@@ -1,0 +1,179 @@
+﻿@page "/crear-empleado"
+@rendermode InteractiveServer
+@using AppEmpleados.Components.Models
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Empleados</PageTitle>
+<h3>Empleado</h3>
+
+<div>
+    <div class="form-control">
+        <label class="form-label my-2">Nombre: </label>
+        <input class="form-control" @bind="nuevoEmpleado.Nombre">
+        @if (showError && string.IsNullOrWhiteSpace(nuevoEmpleado.Nombre))
+        {
+            <div class="text-danger">El nombre es requerido</div>
+        }
+
+        <label class="form-label my-2">Apellido: </label>
+        <input class="form-control" @bind="nuevoEmpleado.Apellido">
+        <label class="form-label my-2">Teléfono: </label>
+        <input class="form-control" @bind="nuevoEmpleado.Telefono">
+        <label class="form-label my-2">Correo: </label>
+        <input class="form-control" type="email" @bind="nuevoEmpleado.Correo">
+        <label class="form-label my-2">Estado: </label>
+        <select class="form-select" @bind="nuevoEmpleado.EstadoId">
+            <option value="">Seleccione un estado</option>
+            @foreach (var estado in estados)
+            {
+                <option value="@estado.id">@estado.Nombre</option>
+            }
+        </select>
+        <div class="d-grid">
+            <button class="btn btn-primary my-5" @onclick="GuardarEmpleado">Guardar empleado</button>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Apellido</th>
+                <th>Teléfono</th>
+                <th>Correo</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var empleado in empleados)
+            {
+                <tr>
+                    <td>@empleado.Nombre</td>
+                    <td>@empleado.Apellido</td>
+                    <td>@empleado.Telefono</td>
+                    <td>@empleado.Correo</td>
+                    <td>@estados.FirstOrDefault(e => e.id == empleado.EstadoId)?.Nombre</td>
+                    <td>
+                        <button class="btn btn-warning me-2" @onclick="() => EditarEmpleado(empleado)">Editar</button>
+                        <button class="btn btn-danger" @onclick="() => EliminarEmpleado(empleado)">Eliminar</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<Estado> estados;
+    private List<Models.Empleado> empleados = new List<Models.Empleado>();
+    private Models.Empleado nuevoEmpleado = new Models.Empleado();
+    private bool showError = false;
+    private bool isEditing = false;
+    private Models.Empleado empleadoAEditar;
+    private bool isInitialized = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        estados = new List<Estado>
+        {
+            new Estado {id=1, Nombre = "Activo"},
+            new Estado {id=2, Nombre = "Inactivo"},
+            new Estado {id=3, Nombre = "Suspendido"}
+        };
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await CargarEmpleados();
+            isInitialized = true;
+            StateHasChanged();
+        }
+    }
+
+    private async Task GuardarEmpleado()
+    {
+        // Validar que todos los campos no sean nulos
+        showError = false;
+        if (string.IsNullOrWhiteSpace(nuevoEmpleado.Nombre) ||
+            string.IsNullOrWhiteSpace(nuevoEmpleado.Apellido))
+        {
+            showError = true;
+            return;
+        }
+
+        if (isEditing)
+        {
+            // Actualizar el empleado existente
+            var empleado = empleados.FirstOrDefault(e => e == empleadoAEditar);
+            if (empleado != null)
+            {
+                empleado.Nombre = nuevoEmpleado.Nombre;
+                empleado.Apellido = nuevoEmpleado.Apellido;
+                empleado.Telefono = nuevoEmpleado.Telefono;
+                empleado.Correo = nuevoEmpleado.Correo;
+                empleado.EstadoId = nuevoEmpleado.EstadoId;
+            }
+            isEditing = false;
+        }
+        else
+        {
+            // Agregar un nuevo empleado
+            empleados.Add(new Models.Empleado
+                {
+                    Nombre = nuevoEmpleado.Nombre,
+                    Apellido = nuevoEmpleado.Apellido,
+                    Telefono = nuevoEmpleado.Telefono,
+                    Correo = nuevoEmpleado.Correo,
+                    EstadoId = nuevoEmpleado.EstadoId
+                });
+        }
+
+        // Guardar los datos en localStorage
+        await GuardarEmpleados();
+
+        // Limpiar el formulario
+        nuevoEmpleado = new Models.Empleado();
+        showError = false;
+    }
+
+    private void EditarEmpleado(Models.Empleado empleado)
+    {
+        nuevoEmpleado = new Models.Empleado
+            {
+                Nombre = empleado.Nombre,
+                Apellido = empleado.Apellido,
+                Telefono = empleado.Telefono,
+                Correo = empleado.Correo,
+                EstadoId = empleado.EstadoId
+            };
+        empleadoAEditar = empleado;
+        isEditing = true;
+    }
+
+    private async Task EliminarEmpleado(Models.Empleado empleado)
+    {
+        empleados.Remove(empleado);
+        // Guardar los datos en localStorage
+        await GuardarEmpleados();
+    }
+
+    private async Task GuardarEmpleados()
+    {
+        var empleadosJson = System.Text.Json.JsonSerializer.Serialize(empleados);
+        await JSRuntime.InvokeVoidAsync("localStorageHelper.setItem", "empleados", empleadosJson);
+    }
+
+    private async Task CargarEmpleados()
+    {
+        var empleadosJson = await JSRuntime.InvokeAsync<string>("localStorageHelper.getItem", "empleados");
+        if (!string.IsNullOrWhiteSpace(empleadosJson))
+        {
+            empleados = System.Text.Json.JsonSerializer.Deserialize<List<Models.Empleado>>(empleadosJson);
+        }
+    }
+}
